@@ -1,0 +1,27 @@
+---
+title: 待办
+description: 尚未实现的事项；已实现待确认项在 pending-test.mdx
+---
+
+# 待办
+
+本页只放尚未实现的事项，方便从 [文档索引](../../../index.md) 和 README 打开。[待测试](./pending-test.mdx)（`docs/content/docs/progress/pending-test.mdx`）在仓库中，并已列入 `.gitignore` 白名单。它记录已经实现、等待手工确认的变化。两页不互相替代：待办是未做事项，待测试是已实现待确认。本页不把待测试清单复制过来。
+
+下列条目都能回到现有设计文档或功能清单中的原话，不是新的排期。
+
+## 仍停留在提案或调研
+
+- 云端 Agent 跨端生成合同、引用绑定和运行存储：`docs/design/cloud-agent-architecture-optimization.md` 自标为提案、未实施。
+- UI 皮肤库（Foundation 与可换肤层分离）：`docs/design/ui-skin-library.mdx` 自标为提案、未实施。
+- 独立插件运行时与公开插件市场：`docs/design/plugin-platform-and-marketplace-research.md` 自标为调研建议、未实施。
+
+## 实现里已经标明的缺口
+
+- 3D 预演台的程序化布景、排戏和离线逐帧编码仍属后续工作。现行入口和快捷键见 [画布入口](../canvas/canvas-node-manual.mdx)。
+- 画布编辑租约尚未覆盖分镜逐行对白等字段。同步合同见 [画布 operations 同步](../backend/canvas-operations-sync.mdx)。
+- 全屏剪辑工作台没有挂到路由。`web/src/lib/plugins/builtin/editor/` 会注册插槽，但没有页面挂载 `EditorStoreProvider`。用户剪辑走画布时间线，见功能清单「剪辑成片」。
+
+## 不在本页
+
+- 不记录账号、密码、Token 或本机绝对路径。
+- 不把 `pending-test.mdx` 里已实现待确认的清单迁入本页。

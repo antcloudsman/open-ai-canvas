@@ -6,7 +6,8 @@
 
 用户要求部署服务器时，默认使用官方 Release 镜像、`docker-compose.deploy.yml` 和 Host Updater。本地 SQLite 构建与自定义 Compose 不属于后台在线更新管理范围。
 
-- [Docker 部署](content/docs/overview/docker.mdx)：默认服务器方案、Compose 选择与已有部署核对。
+- [快速开始](content/docs/overview/quick-start.mdx)：宿主机启动。生产不要按该页暴露开发服务。
+- [Docker 部署](content/docs/overview/docker.mdx)：默认服务器方案是 `docker-compose.deploy.yml` + `scripts/install-server-image.sh` + Host Updater。`docker-compose.server.yml` 的 CORS 默认 `*`、页面端口 `127.0.0.1:5173`，不是生产默认。
 - [在线更新与安全回退](content/docs/backend/system-update.mdx)：受管部署条件、安装、备份、迁移和回退。
 - [本地开发](content/docs/backend/local-development.mdx)：宿主机与热更新开发环境。
 
@@ -66,7 +67,10 @@
 功能、代码地图、待办、待测试分别维护在以下页面；尚未建立的专题会在对应任务中补齐：
 
 - [AI 审美批改画布插件](content/docs/plugins/ai-art-critique.mdx)
+- [快速开始](content/docs/overview/quick-start.mdx)
+- [Docker 部署](content/docs/overview/docker.mdx)
 - [功能](content/docs/overview/features.mdx)
+- [画布入口](content/docs/canvas/canvas-node-manual.mdx)
 - [本地开发](content/docs/backend/local-development.mdx)
 - [HTTP API 合同](content/docs/backend/http-api.mdx)
 - [后端数据库](content/docs/backend/backend-database.mdx)

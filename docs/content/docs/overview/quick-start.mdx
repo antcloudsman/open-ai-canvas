@@ -1,0 +1,61 @@
+---
+title: 快速开始
+description: 宿主机启动影策，并指向容器与生产部署文档
+---
+
+# 快速开始
+
+本文只覆盖本机开发启动。容器边界、端口和 CORS 见 [Docker 部署](./docker.mdx)；邮件日志、公网资源地址和 Windows 脚本细节见 [本地开发](../backend/local-development.mdx)。
+
+生产服务器不要按本文把开发服务暴露到公网。默认使用官方 Release 镜像、`docker-compose.deploy.yml` 和 Host Updater，见 [Docker 部署](./docker.mdx)。
+
+## 环境
+
+- [Bun](https://bun.sh/)：前端
+- [Go 1.25](https://go.dev/)：后端
+- Docker Compose：只用容器开发或试运行时需要
+
+## 宿主机
+
+在仓库根目录执行。数据放在 Git 忽略的 `.local/project-workbench-debug`，不要把 `backend/data` 当作开发账号库。
+
+```bash
+git clone https://github.com/ddcat-ai/open-ai-canvas.git
+cd open-ai-canvas
+
+mkdir -p .local/project-workbench-debug .local/cache/go-build .local/cache/go-mod
+
+# 终端一：后端
+cd backend
+CANVAS_BACKEND_ADDR=127.0.0.1:8080 \
+CANVAS_BACKEND_DATA_DIR=../.local/project-workbench-debug \
+GOCACHE=../.local/cache/go-build \
+GOMODCACHE=../.local/cache/go-mod \
+go run ./cmd/server
+
+# 终端二：前端
+cd ../web
+bun install --frozen-lockfile
+bun run dev
+```
+
+`web/package.json` 的 `dev` 脚本是 `vite --host 0.0.0.0 --port 3000`。浏览器打开 <http://localhost:3000>。前端把 `/api` 代理到 `http://127.0.0.1:8080`；要改代理目标时设置 `VITE_API_PROXY_TARGET`。
+
+首次使用时在页面上注册管理员，再在设置里配置模型渠道。公开仓库不提供演示账号或密码。
+
+Windows PowerShell 可在仓库根目录执行 `.\scripts\start-local.ps1`。脚本使用同一套 `.local/project-workbench-debug` 数据目录。
+
+## 容器
+
+本地热更新和本地构建镜像都不是生产部署：
+
+```bash
+# 源码热更新。前端默认 3000，后端默认只绑定 127.0.0.1:8080
+LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) \
+  docker compose -f docker-compose.dev.yml up --build
+
+# 本地构建并运行。只发布 web 的 3000，后端留在容器网络内
+docker compose -f docker-compose.local.yml up -d --build
+```
+
+端口冲突时，热更新编排用 `CANVAS_WEB_HOST_PORT` 和 `CANVAS_BACKEND_HOST_PORT` 覆盖。各 Compose 文件的适用边界见 [Docker 部署](./docker.mdx)。
