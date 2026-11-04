@@ -45,6 +45,7 @@ docs/content/docs/canvas/*
 docs/content/docs/progress/*
 !docs/content/docs/progress/pending-test.mdx
 !docs/content/docs/progress/todo.mdx
+!docs/content/docs/progress/w0-t-qa-01-verify-policy.mdx
 .env*
 !.env.example
 data/
