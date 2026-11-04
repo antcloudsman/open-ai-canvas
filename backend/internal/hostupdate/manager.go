@@ -21,6 +21,9 @@ import (
 
 const maxReleaseResponseBytes = 4 << 20
 
+// DefaultRepository 是未设置 CANVAS_UPDATER_REPOSITORY 时 Host Updater 检查的 GitHub 仓库。
+const DefaultRepository = "antcloudsman/open-ai-canvas"
+
 type Config struct {
 	Repository   string
 	InstallDir   string
@@ -70,7 +73,7 @@ type Manager struct {
 func NewManager(config Config) (*Manager, error) {
 	config.Repository = strings.TrimSpace(config.Repository)
 	if config.Repository == "" {
-		config.Repository = "ddcat-ai/open-ai-canvas"
+		config.Repository = DefaultRepository
 	}
 	if config.InstallDir == "" {
 		config.InstallDir = "/opt/open-ai-canvas"

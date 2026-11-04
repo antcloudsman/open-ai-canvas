@@ -206,3 +206,58 @@ func TestDeployComposeAgentVariablesFallbackForLegacyUpdater(t *testing.T) {
 		}
 	}
 }
+
+func TestForkDeployRepositoryDefaultAndOverride(t *testing.T) {
+	if DefaultRepository != "antcloudsman/open-ai-canvas" {
+		t.Fatalf("DefaultRepository = %q", DefaultRepository)
+	}
+	dir := t.TempDir()
+	unset, err := NewManager(Config{
+		InstallDir: filepath.Join(dir, "unset"),
+		StateDir:   filepath.Join(dir, "state-unset"),
+		BackupDir:  filepath.Join(dir, "backups-unset"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unset.config.Repository != DefaultRepository {
+		t.Fatalf("empty repository = %q", unset.config.Repository)
+	}
+	blank, err := NewManager(Config{
+		Repository: " \t ",
+		InstallDir: filepath.Join(dir, "blank"),
+		StateDir:   filepath.Join(dir, "state-blank"),
+		BackupDir:  filepath.Join(dir, "backups-blank"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blank.config.Repository != DefaultRepository {
+		t.Fatalf("blank repository = %q", blank.config.Repository)
+	}
+	override, err := NewManager(Config{
+		Repository: " example/override ",
+		InstallDir: filepath.Join(dir, "override"),
+		StateDir:   filepath.Join(dir, "state-override"),
+		BackupDir:  filepath.Join(dir, "backups-override"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if override.config.Repository != "example/override" {
+		t.Fatalf("override repository = %q", override.config.Repository)
+	}
+
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "docker-compose.deploy.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	compose := string(data)
+	const agentFallback = "${CANVAS_YINGCE_AGENT_IMAGE:-ghcr.io/antcloudsman/open-ai-canvas-yingce-agent:${CANVAS_IMAGE_TAG:?请先配置 CANVAS_IMAGE_TAG}}"
+	if !strings.Contains(compose, agentFallback) {
+		t.Fatalf("compose agent fallback missing %s", agentFallback)
+	}
+	if strings.Contains(compose, "ddcat-ai") {
+		t.Fatal("docker-compose.deploy.yml still defaults to ddcat-ai")
+	}
+}
