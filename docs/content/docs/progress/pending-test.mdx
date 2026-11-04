@@ -5,6 +5,14 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## 分叉部署默认仓库（antcloudsman）
+
+- 已实现：未设置覆盖变量时，`scripts/install-server-image.sh` 的 `IMAGE_REPOSITORY` / `COMPOSE_URL` / `UPDATER_INSTALL_URL`、`scripts/install-host-updater.sh` 的 `REPOSITORY`、`scripts/install-server.sh` 的 `REPOSITORY_URL`、Host Updater 的 `CANVAS_UPDATER_REPOSITORY` 空值回退，以及 `docker-compose.deploy.yml` 的 Agent 镜像回退，都指向 `antcloudsman/open-ai-canvas`。显式设置上述变量时仍使用调用方的值。
+- 本地验证：脚本默认赋值的空环境与覆盖环境，Compose 渲染，以及 Host Updater `NewManager` 空仓库回退。未在真实服务器上安装，也未拉取 GHCR 镜像。
+- [ ] 不设置 `IMAGE_REPOSITORY`、`REPOSITORY`、`REPOSITORY_URL`、`COMPOSE_URL`、`UPDATER_INSTALL_URL`、`CANVAS_UPDATER_REPOSITORY`、`CANVAS_YINGCE_AGENT_IMAGE` 时，安装与更新目标为 `antcloudsman`。
+- [ ] 分别设置上述变量后，安装脚本、Host Updater 和 Compose 使用覆盖值。
+- [ ] 已发布的 Host Updater 二进制需用本变更重新构建后，空 `CANVAS_UPDATER_REPOSITORY` 才会改为 `antcloudsman`。
+
 ## 界面多语言第一期（#948）
 
 - 已实现：引入 `i18next` / `react-i18next`，`web/src/i18n/` 管理六种语言（zh-CN 为源语言，其他语言键结构由类型检查和单测保证一致，缺失时回退中文）。语言保存在本设备，首次按浏览器语言选择；antd、dayjs、`<html lang>`、相对时间随语言切换。登录页、账户菜单和设置页「偏好设置」提供语言选择。

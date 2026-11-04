@@ -48,15 +48,17 @@ description: Host Updater、Release 检查、数据库备份迁移、健康验�
 GHCR 镜像部署必须把 `CANVAS_IMAGE_TAG` 固定到具体 Release，并把 `CANVAS_BACKEND_IMAGE`、`CANVAS_WEB_IMAGE` 固定到对应 GHCR digest，不可使用 `latest` 或仅使用可变 tag。首次安装时显式指定 Release：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ddcat-ai/open-ai-canvas/main/scripts/install-server-image.sh \
+curl -fsSL https://raw.githubusercontent.com/antcloudsman/open-ai-canvas/main/scripts/install-server-image.sh \
   | sudo env CANVAS_IMAGE_TAG=v1.5.7.1 bash
 ```
+
+未设置 `IMAGE_REPOSITORY`、`COMPOSE_URL`、`UPDATER_INSTALL_URL` 时，安装脚本从 `antcloudsman/open-ai-canvas` 拉取 Compose 与更新器，镜像默认 `ghcr.io/antcloudsman/open-ai-canvas`。需要其他仓库时，在同一条命令前设置这些变量。Host Updater 未设置 `CANVAS_UPDATER_REPOSITORY` 时同样检查 `antcloudsman/open-ai-canvas`。
 
 已有部署只安装更新器时，先确认 `.env` 已包含两个 `@sha256:...` 镜像引用，再执行：
 
 ```bash
 cd /opt/open-ai-canvas
-curl -fsSL https://raw.githubusercontent.com/ddcat-ai/open-ai-canvas/main/scripts/install-host-updater.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/antcloudsman/open-ai-canvas/main/scripts/install-host-updater.sh | sudo bash
 ```
 
 脚本会下载与当前 Release 匹配的 Linux amd64/arm64 二进制和 `SHA256SUMS`，生成随机 `CANVAS_UPDATER_TOKEN`，创建 systemd 服务、Socket 目录、状态目录和 `backups/`。Token 只保存在服务器 `.env` 与 root-only 更新器环境文件中。
