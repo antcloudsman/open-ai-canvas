@@ -13,6 +13,15 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 - [ ] 分别设置上述变量后，安装脚本、Host Updater 和 Compose 使用覆盖值。
 - [ ] 已发布的 Host Updater 二进制需用本变更重新构建后，空 `CANVAS_UPDATER_REPOSITORY` 才会改为 `antcloudsman`。
 
+## Host Updater：回退恢复数据目录并在恢复前停止 Agent
+
+- 已实现：回退校验 ZIP 后，把 `backend-data.tar` 换回 backend 数据卷 `/data`（拒绝越界路径；替换未完成会留下 `.hostupdate-restore-new` 或 `.hostupdate-restore-old`）。回退开始时停止 web、backend、yingce-agent；数据目录和数据库都成功后才 `up -d` 拉起 Agent。停服失败不恢复数据，并尝试拉起原服务。
+- 本地验证：`go test ./internal/hostupdate/` 覆盖停服顺序、失败后不继续恢复、危险 tar 拒绝，以及替换脚本的成功替换和中断标记。未在真实 Compose 上执行回退。
+- [ ] 备份 ZIP 中 `backend-data.tar` 非空，且包含当时的对象或文件。
+- [ ] 回退后 `/data` 与该次备份的数据库一致，卷内没有 `.hostupdate-restore-new`、`.hostupdate-restore-old` 目录。
+- [ ] 数据目录或数据库恢复失败时，`state.json` 的 phase 为 `manual_intervention`，`yingce-agent` 保持停止。
+- [ ] 回退日志里，停止 Agent 在恢复之前，启动在两侧恢复成功之后。
+
 ## 界面多语言第一期（#948）
 
 - 已实现：引入 `i18next` / `react-i18next`，`web/src/i18n/` 管理六种语言（zh-CN 为源语言，其他语言键结构由类型检查和单测保证一致，缺失时回退中文）。语言保存在本设备，首次按浏览器语言选择；antd、dayjs、`<html lang>`、相对时间随语言切换。登录页、账户菜单和设置页「偏好设置」提供语言选择。

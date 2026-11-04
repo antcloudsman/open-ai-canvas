@@ -30,16 +30,29 @@ description: Host Updater、Release 检查、数据库备份迁移、健康验�
 
 ## 自动回退
 
-停服后的迁移、启动或健康验证失败会触发自动回退：
+停服后的迁移、启动或健康验证失败会触发自动回退。人工回退走同一条路径：
 
-1. 停止目标 web/backend；
-2. 恢复更新前保存的 Compose 文件；
-3. 恢复更新前保存的 `.env`，确保 backend/web 镜像仍绑定到原 digest；
-4. 再次校验备份 ZIP 和 SHA-256；
-5. 使用 `pg_restore --clean --if-exists` 恢复 PostgreSQL；
-6. 启动旧服务并重新进行稳定窗口验证。
+1. 停止 web、backend、yingce-agent，与更新 drain 相同。停服失败则不恢复数据，并尝试按 backend、yingce-agent、web 拉起原服务。
+2. 恢复更新前保存的 Compose 文件和 `.env`（含当时的镜像 digest）。任一步失败则不碰数据库和数据目录，已停止的服务保持停止。
+3. 再次校验备份 ZIP 与 SHA-256，并检查 `backend-data.tar` 的路径。绝对路径、`..` 越界、指向卷外的链接，以及设备文件等类型会被拒绝，此时还不会改数据卷。
+4. 用原 backend 镜像的一次性 root 容器把 `/data` 换成备份内容：先清掉上次留下的 `.hostupdate-restore-*` 标记，解到 `/data/.hostupdate-restore-new`，把现有内容挪到 `/data/.hostupdate-restore-old`，再换入备份文件。成功后删除旧内容目录。这一步需要数据卷上大约再有一份数据大小的空闲空间。`.hostupdate-restore-*` 只给回退使用。
+5. 数据目录恢复成功后，才 `dropdb --if-exists --force`、`createdb`，再用 `pg_restore --no-owner --no-privileges` 恢复 PostgreSQL。数据目录失败时不删除数据库。
+6. 只有数据目录和数据库都恢复成功，才 `up -d` 启动旧版本（包含 yingce-agent），并重新做稳定窗口验证。
 
-回退任一步失败时状态变为 `manual_intervention`，不伪造成功。管理后台仅在存在旧版本和已校验备份时开放人工回退按钮。
+回退任一步失败时状态变为 `manual_intervention`，不伪造成功。恢复过程失败时 web、backend、yingce-agent 保持停止，避免 Agent 或 Backend 写入半恢复的数据。管理后台仅在存在旧版本和已校验备份时开放人工回退按钮。
+
+半恢复可以这样看：
+
+- `/var/lib/open-ai-canvas-updater/state.json` 里 `operation.phase` 为 `manual_intervention`，`rollbackError` 和 `logs` 写明停在停服、部署配置、数据目录还是数据库。
+- 数据卷里如果还有目录 `.hostupdate-restore-new` 或 `.hostupdate-restore-old`，文件替换没有完成。数据目录失败时数据库还没删除；数据库失败时文件已是备份内容，服务仍停止。同一份已校验 ZIP 可以再执行一次回退。
+
+```bash
+cd /opt/open-ai-canvas
+unzip -l backups/backup-*.zip
+sudo python3 -c 'import json; s=json.load(open("/var/lib/open-ai-canvas-updater/state.json")); op=s["operation"]; print(op["phase"]); print(op.get("rollbackError","")); [print(item["message"]) for item in op["logs"]]'
+docker compose --env-file .env -f docker-compose.deploy.yml ps web backend yingce-agent
+docker compose --env-file .env -f docker-compose.deploy.yml run --rm --no-deps --pull never --user root --entrypoint ls backend -la /data
+```
 
 该备份覆盖旧服务停止前的写入。新版本启动后产生的业务写入不在此快照中，历史备份回退仍可能覆盖这些写入；需按恢复时的数据和 schema 状态另行确认。
 
