@@ -30,6 +30,11 @@ docs/content/docs/backend/*
 !docs/content/docs/backend/video-token-billing.mdx
 !docs/content/docs/backend/credit-rewards.mdx
 !docs/content/docs/backend/creative-agent-runtime.mdx
+# Host Updater 手测记录。目录仍默认忽略，只放行点名文件。
+!docs/content/docs/progress/
+docs/content/docs/progress/*
+!docs/content/docs/progress/pending-test.mdx
+!docs/content/docs/progress/w0-t-p0-01-02-handtest.mdx
 # Keep the creative Agent design versioned without unignoring generated docs.
 !docs/content/docs/overview/
 docs/content/docs/overview/*
