@@ -1,3 +1,7 @@
+# 非生产编排，不要当作公网默认。
+# CANVAS_CORS_ORIGINS 默认是 *；web 只绑定 127.0.0.1:5173（容器内仍是 3000）。
+# 生产使用 docker-compose.deploy.yml、scripts/install-server-image.sh 和 Host Updater。
+# 说明见 docs/content/docs/overview/docker.mdx。下面的默认值保持原样。
 services:
   postgres:
     container_name: open-ai-canvas-postgres

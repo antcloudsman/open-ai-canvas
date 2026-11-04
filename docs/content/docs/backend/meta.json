@@ -5,6 +5,7 @@
   "pages": [
     "local-development",
     "canvas-agent-appearance",
+    "agent-prompt-policy",
     "http-api",
     "code-map",
     "backend-database",
@@ -15,8 +16,8 @@
     "newapi-channel-2",
     "bailian-minimax-video",
     "system-update",
-    "protocol-plugins",
-    "canvas-data-structure",
+    "update-announcements",
+    "skill-curation",
     "canvas-operations-sync"
   ]
 }

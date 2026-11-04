@@ -1,0 +1,57 @@
+---
+title: 画布入口
+description: 画布路由、时间线与预演台的现行入口；替代已缺失的节点手册页
+---
+
+# 画布入口
+
+这里是原「画布操作手册」的替代页。仓库里没有一份按节点逐项展开的独立手册；打开本页可以进到已经核对过的路由和文档。节点外观和浮动控件的设计约束分别在 [画布节点可读性](../../../design/canvas-node-visual-contrast.mdx) 与 [画布浮动控件](../../../design/canvas-floating-controls.mdx)。批量生成一致性见 [画布批量生成一致性治理](../../../design/canvas-consistency-repair.mdx)。
+
+## 路由
+
+`web/src/router.tsx` 中的画布相关路由：
+
+- `/canvas`：画布列表，需要登录。
+- `/canvas/:id`：画布项目，需要登录。
+- `/share/canvas/:token`：只读分享。
+
+短剧项目是 `/projects/:projectId` 和 `/projects/:projectId/e/:episodeId`。`/projects/:projectId/*` 会重定向回项目页，因此 `/projects/:id/editor` 不会打开编辑器。
+
+## 同步、Agent 与精修
+
+- 保存、离线重放和同账号多窗口见 [画布 operations 同步](../backend/canvas-operations-sync.mdx)。
+- 助手名称与 Live2D 包见 [画布 Agent 外观与 Live2D](../backend/canvas-agent-appearance.mdx)。
+- 短剧精修画布、投送和「采用到短剧」见 [功能清单](../overview/features.mdx) 的「短剧精修画布」。制作台顶栏「精修画布」、本集「在画布中打开本集」、设定或剧情段里的「在画布中精修」、成片页「到画布精剪」都打开同一张关联画布。
+
+## 时间线
+
+用户能打开的剪辑在画布项目里，不在独立的项目编辑器页面。
+
+- 视频或音频节点工具「时间线编辑」（界面文案「进入剪辑」）打开 `CanvasTimelineDialog`。注册项在 `web/src/lib/canvas/tool-registry/definitions/node-hover-tools.tsx`。
+- 短剧成片页按钮「到画布精剪」，以及画布短剧侧栏，把该集已就绪的剧情段视频按顺序载入这条时间线。时间线已有片段时会先确认是否整条替换。逻辑在 `web/src/pages/canvas/use-canvas-drama.ts` 的 `openEpisodeCut`。
+- 弹窗内可按当前视频、选中视频、整个画布或已保存时间线取素材，保存写回画布项目。
+
+`web/src/pages/projects/detail/editor.tsx` 不存在。内置 `editor-shell` 插件仍在 `web/src/lib/plugins/builtin/editor/` 注册八个插槽，但 `EditorStoreProvider` 没有被路由页面挂载，那些插槽目前打不开。
+
+## 预演台快捷键
+
+预演台从画布镜头节点打开。快捷键不在单独的文档页 `/docs/canvas/canvas-shortcuts`（该页不存在），而在预演台工具条「快捷键 (?)」面板。下表与 `web/src/lib/canvas/previs/previs-shortcuts.ts` 的 `PREVIS_SHORTCUT_GUIDE` 一致。焦点在输入框、按钮或其他控件内时，这些按键不会被当成全局快捷键。
+
+| 分组 | 按键 | 作用 |
+| --- | --- | --- |
+| 选择与变换 | Q | 选择工具（只点选，不显示手柄） |
+| 选择与变换 | W | 移动 |
+| 选择与变换 | E | 旋转 |
+| 选择与变换 | R | 缩放 |
+| 选择与变换 | Esc | 取消选择 |
+| 选择与变换 | Delete | 删除选中对象 / 灯光 |
+| 选择与变换 | Ctrl/⌘ D | 复制选中对象 |
+| 选择与变换 | H | 显示 / 隐藏选中对象 |
+| 视图 | F | 聚焦选中对象 |
+| 视图 | A | 适配全部对象 |
+| 视图 | C | 切换 3D / 机位视图 |
+| 时间轴与输出 | Space | 播放 / 暂停 |
+| 时间轴与输出 | Ctrl/⌘ Z | 撤销 |
+| 时间轴与输出 | Ctrl/⌘ Shift Z | 重做 |
+| 时间轴与输出 | P | 截取当前镜头画面 |
+| 时间轴与输出 | ? | 显示 / 隐藏快捷键 |

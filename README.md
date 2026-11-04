@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <a href="https://yingce.tv"><strong>在线演示 yingce.tv</strong></a>（账号/密码：test/test123456） ·
+  <a href="https://yingce.tv"><strong>在线演示 yingce.tv</strong></a>（仓库不公开演示账号或密码；向站点运营方单独索取，拿到后请立即修改） ·
   <a href="#快速开始">本地启动</a>
 </p>
 
@@ -208,6 +208,14 @@ docker compose -f docker-compose.local.yml up -d --build
 
 热更新开发默认前端端口为 `3000`、后端端口为 `8080`；端口冲突时可通过 `CANVAS_WEB_HOST_PORT` 和 `CANVAS_BACKEND_HOST_PORT` 覆盖。本地构建编排只暴露 web 的 `3000`，后端留在容器网络内。
 
+### 生产部署
+
+服务器默认使用官方 Release 镜像、`docker-compose.deploy.yml` 和宿主机 Host Updater，安装入口是 `scripts/install-server-image.sh`。`CANVAS_IMAGE_TAG` 必须固定到具体 Release，不能使用 `latest`。公网只暴露 web 的 `CANVAS_HTTP_PORT`（默认 `3000`），后端 `8080` 留在 Compose 网络内。`CANVAS_CORS_ORIGINS` 要写成明确的前端 Origin。
+
+`docker-compose.server.yml` 不是这条生产路径：它把 `CANVAS_CORS_ORIGINS` 默认设为 `*`，并把页面绑在 `127.0.0.1:5173`。不要用它代替 deploy 编排。端口、数据目录和其余 Compose 的边界见 [Docker 部署](docs/content/docs/overview/docker.mdx)。
+
+`scripts/install-server.sh` 会在服务器上源码构建，并且不安装 Host Updater，不能当作在线更新安装入口。
+
 更多本地开发说明（包括时间线字幕转写）见[本地开发文档](docs/content/docs/backend/local-development.mdx)。
 
 ## 架构概览
@@ -231,7 +239,7 @@ docker compose -f docker-compose.local.yml up -d --build
 ## 安全边界
 
 - 首次管理员注册应在受控网络完成，公网部署保持 `CANVAS_REGISTRATION_ENABLED=false`。
-- 设置准确的 `CANVAS_CORS_ORIGINS`，不要在公网使用 `*`；使用 HTTPS 并正确转发代理头。
+- 设置准确的 `CANVAS_CORS_ORIGINS`，不要在公网使用 `*`；使用 HTTPS 并正确转发代理头。生产编排是 `docker-compose.deploy.yml`（CORS 默认为空）。`docker-compose.server.yml` 的 CORS 默认值是 `*`、页面端口是 `127.0.0.1:5173`，不能当作生产配置。
 - 后端默认拒绝本机、私网和链路本地模型地址。开发时只通过 `CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS` 精确放行可信主机，不要使用全量放行开关。
 - 用户 API Key 不应出现在 URL、日志、错误上报或服务端长期明文存储中；只在可信部署和 HTTPS 链路中使用真实密钥。
 - 后端 `8080` 应留在 Compose 网络内，不要直接暴露到公网；限制 `.env`、数据库、上传目录、备份和 `.settings-key` 的权限。
@@ -248,7 +256,7 @@ docker compose -f docker-compose.local.yml up -d --build
 - [代码功能地图](docs/content/docs/backend/code-map.mdx)
 - [本地开发](docs/content/docs/backend/local-development.mdx)
 - [数据库结构](docs/content/docs/backend/backend-database.mdx)
-- [画布操作手册](docs/content/docs/canvas/canvas-node-manual.mdx)
+- [画布入口](docs/content/docs/canvas/canvas-node-manual.mdx)
 - [插件系统](docs/content/docs/plugins/plugin-system.mdx)
 - [待办与待测试](docs/content/docs/progress/todo.mdx) · [待测试清单](docs/content/docs/progress/pending-test.mdx)
 - [更新日志](CHANGELOG.md) · [贡献指南](CONTRIBUTING.md)
