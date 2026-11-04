@@ -1,0 +1,52 @@
+---
+title: W0 T-QA-01 推送前 verify 策略
+description: 空跑不得冒充全绿、web:test 以 CI 为准、本机 Go/bun 自证（C-QA-TEST）
+---
+
+# W0 T-QA-01 推送前 verify 策略
+
+> 任务：T-QA-01（技术总监 W0）。裁决 **C-QA-TEST**（用户拍板）已落地：`web:test` **以 CI 为准**。
+> 记录时间：2026-11-05（Asia/Shanghai）。仓：`E:\Project\open-ai-canvas` @ `main` / `cc229fefa8585c1f9bb1622b7c041022731d503d`。
+> **本文件成文策略与自证；空跑「非全绿」标注由同任务 PR 改 `scripts/verify-before-push.mjs`（总监开窗）。**
+
+## 1. 本机工具链自证
+
+| 项 | 要求 | 实测 |
+| --- | --- | --- |
+| Go | `go1.25.x`（`backend/go.mod` 为 `go 1.25.0`） | `go version go1.25.6 windows/amd64`；`GOROOT=C:\Go`；User PATH 已加 `C:\Go\bin` |
+| 后端冒烟 | 可选短测 | `cd backend; go test ./internal/kernel -count=1` → `ok yingce/backend/internal/kernel`（约 1.1s） |
+| bun（CI 钉） | `.github/workflows/quality.yml` `bun-version: 1.3.9` | 全局默认仍为 **1.4.4** |
+| bun 1.3.9 旁路 | 对齐失败时书面偏差 | 旁路 `bun-1.3.9-pin\...\bun.exe` = **1.3.9**；**未**替换全局 PATH |
+
+### bun 偏差原因（书面）
+
+1. `bun upgrade` 无钉版本开关。
+2. 官方 install.ps1 装到最新 1.4.4。
+3. 全局 bun 多仓共用，强降级有风险。
+4. **结论**：发版/CI 以 quality.yml **1.3.9** 为准；本机日常可用 1.4.4，需对齐时用旁路二进制。
+
+### 后端 verify 不再因「找不到 go」失败
+
+装好 Go 1.25.6 后，`verify-before-push.mjs` 中 `spawnSync("go", ["version"])` 可通过；`--only backend` 不再因无 go 而 `process.exit(1)`。
+
+## 2. 空跑策略（不得冒充全绿）
+
+- 相对 `origin/main` 0 改动且未 `--only`/`--all` 时 tasks 为空，原逻辑打印「没有需要运行的检查。」后 exit 0。
+- **强制口径**：0 改动空跑 / 「没有需要运行的检查」= **非全绿**，禁止宣称全量门禁通过。
+- **本 PR**（`scripts/verify-before-push.mjs`）：无任务早退的 stdout 显式 **【非全绿 / 空跑】**，说明不得宣称全量门禁通过，并打印 skipped / notCovered；exit code 仍为 0。成功收尾若存在 skipped 或 notCovered，追加「非 CI 全量等价」提醒。
+- 全量门禁：CI `quality.yml`，或本机 `--all` / `--only` 实跑完成。
+- 未延长 `TASK_TIMEOUT_MS`，未拆分 `web:test`。
+
+## 3. web:test 超时策略（C-QA-TEST · 已落地）
+
+**以 CI 为准。** 本机 `web:test` 超时不挡发版门禁；不盲重跑超三次；本期不延长 `TASK_TIMEOUT_MS`、不拆分 `web:test`。
+
+## 4. 验收标准对照（T-QA-01 实现自测，总监签字验收）
+
+| 验收项 | 结果 |
+| --- | --- |
+| `go version` 含 `go1.25` | 通过 — go1.25.6 |
+| bun 对齐或书面偏差 | 通过（书面偏差 + 旁路 1.3.9） |
+| 后端 verify 不再因无 Go exit 1 | 通过 |
+| 空跑显式非全绿 | 策略成文 + 脚本标注（本 PR） |
+| web:test 超时策略 | C-QA-TEST：以 CI 为准 |

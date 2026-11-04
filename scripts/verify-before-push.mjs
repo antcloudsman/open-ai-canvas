@@ -166,7 +166,10 @@ if (wantBackend) {
 } else skipped.push("后端检查（没有 backend/ 改动）");
 
 if (!tasks.length) {
-    console.log("没有需要运行的检查。");
+    // 0 改动或未选中任何检查时 exit 0，但不得被当成 CI 全量门禁通过。
+    console.log("【非全绿 / 空跑】没有需要运行的检查。不得宣称全量门禁通过。");
+    for (const item of skipped) console.log(`  跳过：${item}`);
+    for (const item of notCovered) console.log(`  本地未覆盖：${item}`);
     process.exit(0);
 }
 
@@ -274,4 +277,7 @@ for (const task of failed) {
 console.log(`\n共 ${tasks.length} 项，失败 ${failed.length} 项，用时 ${seconds(Date.now() - started)}（并行 ${options.jobs}）`);
 for (const item of skipped) console.log(`  跳过：${item}`);
 for (const item of notCovered) console.log(`  本地未覆盖：${item}`);
+if (!failed.length && (skipped.length || notCovered.length)) {
+    console.log("提醒：存在跳过或本地未覆盖项，本次结果非 CI 全量等价，不得宣称全量门禁通过。");
+}
 process.exit(failed.length ? 1 : 0);

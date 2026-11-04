@@ -35,6 +35,11 @@ docs/content/docs/backend/*
 docs/content/docs/overview/*
 !docs/content/docs/overview/creative-agent-design.mdx
 !docs/content/docs/overview/ecommerce-platform-rules.mdx
+# Keep selected progress notes versioned without unignoring the rest of progress/.
+!docs/content/docs/progress/
+docs/content/docs/progress/*
+!docs/content/docs/progress/pending-test.mdx
+!docs/content/docs/progress/w0-t-qa-01-verify-policy.mdx
 .env*
 !.env.example
 data/
