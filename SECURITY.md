@@ -16,7 +16,8 @@
 
 ## 部署者责任
 
-- 生产环境必须使用 HTTPS，并将 `CANVAS_CORS_ORIGINS` 设置为明确的前端 Origin。
+- 生产环境必须使用 HTTPS，并将 `CANVAS_CORS_ORIGINS` 设置为明确的前端 Origin。默认拓扑是 `docker-compose.deploy.yml`（该文件里 CORS 默认为空），配合 `scripts/install-server-image.sh` 与 Host Updater。`docker-compose.server.yml` 把 CORS 默认写成 `*`，并把 web 绑在 `127.0.0.1:5173`，这是非生产默认值，不能用于公网。
+- 不要在 README、Issue 或文档中公开演示账号密码、Token 或 Cookie。公开仓库只保留占位说明。
 - 首个管理员应在服务暴露公网前完成注册，公开注册默认保持关闭。
 - 数据目录、PostgreSQL/SQLite、备份和 `.settings-key` 必须限制为服务账号可读。
 - 系统模型渠道和 OSS 使用最小权限密钥，并设置供应商侧预算与告警。

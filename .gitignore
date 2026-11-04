@@ -35,6 +35,16 @@ docs/content/docs/backend/*
 docs/content/docs/overview/*
 !docs/content/docs/overview/creative-agent-design.mdx
 !docs/content/docs/overview/ecommerce-platform-rules.mdx
+!docs/content/docs/overview/quick-start.mdx
+!docs/content/docs/overview/docker.mdx
+# 画布入口与待办是仓库内文档，不是生成物。
+!docs/content/docs/canvas/
+docs/content/docs/canvas/*
+!docs/content/docs/canvas/canvas-node-manual.mdx
+!docs/content/docs/progress/
+docs/content/docs/progress/*
+!docs/content/docs/progress/pending-test.mdx
+!docs/content/docs/progress/todo.mdx
 .env*
 !.env.example
 data/

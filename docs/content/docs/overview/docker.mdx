@@ -1,0 +1,71 @@
+---
+title: Docker 部署
+description: 生产 deploy 编排、其余 Compose 的边界，以及 server.yml 的非生产默认值
+---
+
+# Docker 部署
+
+公网或服务器的默认方案是：官方已发布 Release、`docker-compose.deploy.yml`、`scripts/install-server-image.sh`，以及宿主机上的 Host Updater。不要把 `docker-compose.server.yml`、根目录 `docker-compose.yml` 或 `docker-compose.local.yml` 当成这套受管部署。
+
+在线更新、备份和回退的顺序见 [在线更新与安全回退](../backend/system-update.mdx)。宿主机开发命令见 [快速开始](./quick-start.mdx) 和 [本地开发](../backend/local-development.mdx)。
+
+## 生产：deploy + 安装脚本
+
+`docker-compose.deploy.yml` 包含 PostgreSQL、Redis、独立 `migrate`、`yingce-agent`、backend 和 web。
+
+- 镜像由 `CANVAS_BACKEND_IMAGE`、`CANVAS_WEB_IMAGE` 和 `CANVAS_YINGCE_AGENT_IMAGE` 指定，安装脚本要求它们对应具体 Release，不能使用 `latest`。
+- web 发布 `${CANVAS_HTTP_PORT:-3000}:3000`。容器内 Nginx 监听 `3000`（见根目录 `nginx.conf`）。backend 监听容器内 `:8080`，编排不把 `8080` 映射到宿主机。
+- `CANVAS_CORS_ORIGINS` 默认是空字符串。公网必须设成明确的前端 Origin，不要使用 `*`。
+- `CANVAS_REGISTRATION_ENABLED` 默认 `false`。`CANVAS_AUTO_MIGRATE` 为 `false`，迁移由 `migrate` 服务执行 `migrate-schema up`。
+- 数据目录：backend 的 `CANVAS_BACKEND_DATA_DIR=/data`，卷为 `${CANVAS_DATA_PATH:-backend-data}`。PostgreSQL、Redis 和 web 静态资源分别使用 `postgres-data`、`redis-data`、`web-data` 这些命名卷（可用同名环境变量改成宿主机路径）。
+- backend 挂载 `${CANVAS_UPDATER_SOCKET_DIR:-/run/open-ai-canvas-updater}`，把更新操作交给宿主机 Host Updater，业务容器不挂载 Docker Socket。
+
+首次安装必须给出具体 Release 标签。下面的 `<已发布版本>` 要换成该 Release 的标签，并与同一 Release 的镜像、更新器二进制和 `SHA256SUMS` 对齐：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ddcat-ai/open-ai-canvas/main/scripts/install-server-image.sh \
+  | sudo env CANVAS_IMAGE_TAG=<已发布版本> bash
+```
+
+脚本默认安装目录为 `/opt/open-ai-canvas`，默认 `CANVAS_HTTP_PORT=3000`，写入的 Compose 文件是 `docker-compose.deploy.yml`，并继续安装 Host Updater。GHCR 拉取失败时检查网络、包可见性和认证，不要改成未受管的源码目录部署。
+
+`scripts/install-server.sh` 也会使用 `docker-compose.deploy.yml`，但会叠加 `docker-compose.build.yml` 在服务器上构建镜像，并且不安装 Host Updater。它不是在线更新的安装入口。`docker-compose.build.yml` 只给 migrate、yingce-agent、backend、web 填本地构建的 `:server` 镜像；这样得到的镜像不由 Host Updater 管理。
+
+## 不要把 server.yml 当生产默认
+
+`docker-compose.server.yml` 是另一套源码构建编排，和 deploy 拓扑不是同一个入口。
+
+- `CANVAS_CORS_ORIGINS` 默认是 `*`。这是非生产默认值。公网必须改成明确 Origin；仓库示例 `.env.example` 里的 `http://localhost:3000` 也只是本地示例，不能照抄到公网。
+- web 端口写死为 `127.0.0.1:5173:3000`。宿主机只在本机 `5173` 上看到页面，容器内仍然是 Nginx 的 `3000`。这不是 deploy 的 `CANVAS_HTTP_PORT`（默认 `3000`）。
+- 镜像是本地构建的 `open-ai-canvas-backend:server` 和 `open-ai-canvas-web:server`，没有 `yingce-agent`，也没有 Host Updater Socket。
+- 数据默认落在仓库旁的 `./data`、`./postgres-data`、`./redis-data`（可用 `CANVAS_DATA_PATH`、`CANVAS_POSTGRES_DATA_PATH`、`CANVAS_REDIS_DATA_PATH` 覆盖）。不要把它和 deploy 的命名卷或开发目录 `.local/project-workbench-debug` 混用。
+
+文件头部有同样的风险注释。修改注释不会改变这些默认值；若要生产部署，换用上面的 deploy 方案，而不是放宽这份文件的 CORS 或端口。
+
+## 其余 Compose 的边界
+
+| 文件 | 适用场景 | 页面端口 | CORS 默认 | 数据 |
+| --- | --- | --- | --- | --- |
+| `docker-compose.deploy.yml` | 官方 Release + Host Updater | 宿主机 `CANVAS_HTTP_PORT`（默认 `3000`）→ 容器 `3000` | 空，必须显式配置 | 命名卷；backend 容器内 `/data` |
+| `docker-compose.build.yml` | 给 deploy 叠加源码构建 | 不单独发布端口 | 不设置 | 跟随 deploy |
+| `docker-compose.server.yml` | 非生产的源码构建对照 | 仅 `127.0.0.1:5173` → 容器 `3000` | `*` | `./data` 等相对目录 |
+| `docker-compose.local.yml` | 本机构建后试运行 | `3000:3000`；backend 不映射到宿主机 | `http://localhost:3000` | 命名卷 `backend-data`、`web-data`；默认 SQLite |
+| `docker-compose.yml` | 本机构建后试运行 | `3000:3000`；backend 不映射到宿主机 | `http://localhost:3000` | 命名卷 `backend-data`；默认 SQLite |
+| `docker-compose.dev.yml` | 源码热更新 | `CANVAS_WEB_HOST_PORT`（默认 `3000`）；backend 为 `127.0.0.1:${CANVAS_BACKEND_HOST_PORT:-8080}` | `http://localhost:3000` | 绑定已存在的 `.local/project-workbench-debug`，禁止 Compose 新建该目录 |
+
+热更新启动：
+
+```bash
+LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) \
+  docker compose -f docker-compose.dev.yml up --build
+```
+
+本地构建试运行：
+
+```bash
+docker compose -f docker-compose.local.yml up -d --build
+```
+
+`docker-compose.dev.yml`、`docker-compose.local.yml` 和根目录 `docker-compose.yml` 的 `CANVAS_DATABASE_DRIVER` 默认都是 `sqlite`。`docker-compose.deploy.yml` 与 `docker-compose.server.yml` 固定为 `postgres`，并要求配置 `DATABASE_URL` 与 `POSTGRES_PASSWORD`。这五份文件里的 `CANVAS_ALLOW_PRIVATE_UPSTREAMS` 默认都是 `false`；开发机只通过 `CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS` 按主机放行。
+
+已有部署要先按实际 Compose 文件、镜像、数据库和数据卷核对，再决定是否迁到受管 deploy。不要直接覆盖原数据卷。健康检查只能说明入口进程起来了，不能代替登录、任务生成和资源访问验证。

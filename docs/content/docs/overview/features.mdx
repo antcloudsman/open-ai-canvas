@@ -50,7 +50,7 @@ description: 当前项目已实现的核心工作台能力与使用入口
 - 等待：提交后释放执行位，每 15 秒回查一次，任务进度显示“候车 · 前面 N 条 / 已发车 / 出片中”。
 - 出片：成片链接是临时地址，出片后立即下载转存。
 
-中转站的首尾帧不能与参考图混用，短剧使用该渠道时请选择并行出片。插件字段见 `plugin-packages/coolhs-wan3-relay/docs/interface.md`，宿主能力见[统一插件运行时](/docs/backend/protocol-plugins)。
+中转站的首尾帧不能与参考图混用，短剧使用该渠道时请选择并行出片。插件字段见 `plugin-packages/coolhs-wan3-relay/docs/interface.md`，宿主插件合同见[插件系统设计](../plugins/plugin-system.mdx)。原先的 `/docs/backend/protocol-plugins` 页面不存在，侧栏也不再列出它。
 
 ## 推广中心
 
@@ -77,9 +77,7 @@ description: 当前项目已实现的核心工作台能力与使用入口
 
 ## 生图与视频工作台
 
-普通用户可分别使用图片（`/toolbox/image`）、视频（`/toolbox/video`）生成页，面向电商出品：左侧创作面板选择出品场景（场景库按分类和电商细分浏览）、上传或从素材库选择商品素材、套用场景模板并用灵感词补充描述，按所选模型能力设置规格（比例标注主图、服饰主图、竖屏等用途）；一次可生成多张图片或多条视频，页面按模型单次张数和账号并发拆成多个任务并汇总预估积分，部分任务未提交时可继续提交。右侧作品画廊按批次展示进度与结果，支持取消、重新生成、下载全部、复用参数、用作参考图、图片做成视频和大图预览。管理员在「工作台工具」维护分类、图标/封面、预设、使用说明与示例素材，并在「功能开放」分别控制两个入口。新入口默认关闭；工作台任务经过统一任务与计费服务创建。
-
-详见[生图与视频工作台](./workbench)。
+普通用户可分别使用图片（`/toolbox/image`）、视频（`/toolbox/video`）生成页，面向电商出品：左侧创作面板选择出品场景（场景库按分类和电商细分浏览）、上传或从素材库选择商品素材、套用场景模板并用灵感词补充描述，按所选模型能力设置规格（比例标注主图、服饰主图、竖屏等用途）；一次可生成多张图片或多条视频，页面按模型单次张数和账号并发拆成多个任务并汇总预估积分，部分任务未提交时可继续提交。右侧作品画廊按批次展示进度与结果，支持取消、重新生成、下载全部、复用参数、用作参考图、图片做成视频和大图预览。管理员在「工作台工具」维护分类、图标/封面、预设、使用说明与示例素材，并在「功能开放」分别控制两个入口。新入口默认关闭；工作台任务经过统一任务与计费服务创建。没有单独的 `docs/content/docs/overview/workbench.mdx`，入口就是上面的两个路由。
 
 ## 百炼 MiniMax 视频
 
@@ -238,7 +236,7 @@ AutoDL 视频模型的上游模型 ID 原样透传为 ComfyUI 工作流 ID，上
 
 预演台从画布镜头节点打开，统一提供摆场、姿态、动画、摄影机与时间轴。镜头焦段和画幅共同决定取景，机位视图显示安全框；画幅在视口工具条选择，支持自适应（跟随视口）、2.39:1、21:9、16:9、4:3、1:1、3:4、9:16。添加角色时，每种体型用标准人偶缩略图展示，按同一机位渲染，身高可直接比较。构图截图、白模视频、深度图与深度视频使用同一镜头摄影机输出。深度产物回写为独立画布节点，不自动作为普通图片参考提交给模型。
 
-工作台内可下载当前模式的镜头截图、录制镜头画面，或通过浏览器共享选择器录制含面板与操作过程的窗口。实时镜头录制要求标签页保持可见。第二屏监看用独立窗口显示镜头画面，支持全屏；自动定位外接屏依赖浏览器授权，也可以手动拖动。工具条与帮助面板提供[预演台快捷键](/docs/canvas/canvas-shortcuts)。
+工作台内可下载当前模式的镜头截图、录制镜头画面，或通过浏览器共享选择器录制含面板与操作过程的窗口。实时镜头录制要求标签页保持可见。第二屏监看用独立窗口显示镜头画面，支持全屏；自动定位外接屏依赖浏览器授权，也可以手动拖动。快捷键在预演台工具条「快捷键 (?)」面板里，键位表见[画布入口](../canvas/canvas-node-manual.mdx)。`/docs/canvas/canvas-shortcuts` 没有对应页面。
 
 画布 Agent 使用 `previs_scene_read` 读取摘要，使用 `previs_scene_create`、`previs_apply_patch` 经审批创建和修改场景。路径操作生成真实变换关键帧，设置路径替换对象原变换轨道，清除路径清空该轨道；焦段修改同步取景。`previs_preview` 仍依赖已打开的浏览器工作台执行，尚无完成回执。
 
@@ -442,18 +440,19 @@ SEO 标题、描述、可选关键词会投影到浏览器 metadata、Open Graph
 - `web/src/components/canvas/canvas-image-preview.tsx`：画布与创作页共用的图片预览组件。
 - `web/src/pages/canvas/canvas-project-status-dialogs.tsx`：画布图片节点预览入口。
 - `web/src/pages/create/index.tsx`：生成结果、参考图片和故事板图片预览入口。
-## 可自定义工作台导航
 
-内置工作台插件将常用创作入口统一交给宿主渲染。用户可以在设置页的“自定义区域”（`/settings?section=workbench`）预览侧边栏，分别控制入口显示状态，并通过拖拽或上下按钮调整同一分组内的顺序；“恢复默认”可以还原初始布局。
+## 工作台侧栏导航
 
-布局只属于当前账号在当前浏览器中的界面偏好，按账号 scope 保存在本机浏览器，不会上传素材、密钥或插件代码。功能开关不可用的入口不会展示；工作台入口使用宿主预注册的内部路由，插件不能直接注入工作区脚本。
+按账号拖拽排序侧栏的入口已经不在当前实现里。`/settings?section=workbench` 不是设置页分区；`web/src/lib/workspace-sidebar-layout.ts`、`web/src/lib/plugins/builtin/workbench.ts`、`web/src/pages/settings/workbench-settings-pane.tsx` 都不存在。
 
-### 相关实现
+侧栏由 `web/src/components/layout/workspace-sidebar-nav.tsx` 的 `buildNav` 按功能开关生成固定分组，不能在设置里改顺序或隐藏单项。分组和路由如下：
 
-- `web/src/lib/workspace-sidebar-layout.ts`：入口清单、分组、布局归一化、排序和账号 scope 存储。
-- `web/src/lib/plugins/builtin/workbench.ts`：内置工作台插件 Manifest。
-- `web/src/components/layout/workspace-sidebar-nav.tsx`：按功能开关和用户布局渲染侧边栏。
-- `web/src/pages/settings/workbench-settings-pane.tsx`：预览、显示切换、排序和恢复默认。
+- 创作：`/`（首页）、`/projects`（`shortDramaEnabled`）、`/ecommerce`（`ecommerceEnabled`）、`/canvas`。
+- 工具：`/toolbox/image`（`imageWorkbenchEnabled`）、`/toolbox/video`（`videoWorkbenchEnabled`）、`/skills`、`/plugins`（`pluginCenterEnabled`）。
+- 资产：`/assets`、`/tasks`（`taskCenterEnabled`）。
+
+收起或展开写在本机 `localStorage` 键 `yingce:workspace-sidebar-collapsed`（`web/src/components/layout/workspace-sidebar-state.ts`），不上传布局。设置页分区在 `web/src/pages/settings/index.tsx`：`profile`、`channels`、`runninghub`、`models`、`preferences`、`prompts`、`agent-memory`、`storage`、`diagnostics`、`feedbacks`。其中没有 `workbench`。管理、设置和退出登录从用户卡片进入，不占侧栏底部。
+
 ## 用户诊断包导出
 
 设置页的“问题诊断”入口和任务失败快捷入口支持导出脱敏诊断包，帮助普通用户提交问题时保留足够的排障上下文。
@@ -572,41 +571,22 @@ SEO 标题、描述、可选关键词会投影到浏览器 metadata、Open Graph
 - `backend/payment-plugins/xunhupay.go`：虎皮椒下单、查单、验签与关单适配。
 - `docs/content/docs/plugins/payment-plugin-runtime.mdx`：支付插件运行时协议。
 
-## 剪辑成片（时间线编辑器）
+## 剪辑成片
 
-“剪辑成片”是项目详情里的时间线编辑器入口（`/projects/:id/editor`），用于把已就绪的分镜视频编排成一段可播放、可导出的成片。它运行在浏览器本地时间线模型之上，通过后端任务队列完成语音转写与成片导出，编辑器本身不直接触碰原始媒体大文件。
+用户能打开的剪辑在画布时间线里。`/projects/:id/editor` 不是路由。`web/src/router.tsx` 只有 `/projects/:projectId` 和 `/projects/:projectId/e/:episodeId`；`/projects/:projectId/*` 会重定向回项目页。`web/src/pages/projects/detail/editor.tsx` 和 `web/src/pages/projects/detail/overview.tsx` 不存在。项目页是 `web/src/pages/projects/detail.tsx`。
 
-### 使用入口
+### 现行入口
 
-- 项目详情“制作流程 → 剪辑成片”步骤卡，或地址栏直接访问 `/projects/:id/editor`。
-- 编辑器按项目隔离时间线状态；离开后再次进入会恢复该项目的编辑器快照。
+- 画布里，视频或音频节点的「时间线编辑」（显示为「进入剪辑」）打开 `web/src/components/canvas/canvas-timeline-dialog.tsx`。命令登记在 `web/src/lib/canvas/tool-registry/definitions/node-hover-tools.tsx`。弹窗按当前视频、选中视频、整个画布或已保存时间线取素材，保存写回画布项目。
+- 短剧成片页「到画布精剪」（`web/src/pages/projects/studio/final-view.tsx`，由 `web/src/pages/projects/detail.tsx` 接到画布）以及画布短剧侧栏，调用 `web/src/pages/canvas/use-canvas-drama.ts` 的 `openEpisodeCut`：把该集已就绪的剧情段视频按顺序载入同一条画布时间线。时间线已有片段时先确认是否整条替换。导出的是画布上的新视频，不替换短剧成片。
 
-### 当前能力
+入口说明也写在[画布入口](../canvas/canvas-node-manual.mdx)。
 
-- **轨道与命令**：时间线支持添加、删除、拆分、移动、修剪片段等操作，全部通过统一命令状态机执行并进入 200 层历史记录，可撤销与重做；非法操作整批拒绝，不产生半应用状态。
-- **预设面板**：左侧“添加”分类提供 8 个内置片段/字幕插件，按分类分组接入同一插槽注册链，第三方插件可与内置面板共存。
-- **权限与执行边界**：命令执行遵循失败关闭（fail-closed）策略，`timeline.command` 权限与全局 `plugins.run` 权限分开控制；未授权插件或命令不会被执行或回显。
-- **语音转写（字幕）**：对时间线音视频发起转写任务，转写进度沿任务 SSE 回流，完成后生成字幕轨。
-- **成片导出（渲染）**：发起渲染任务，由服务端 ffmpeg 按渲染计划输出成片；渲染成功后在项目概览的“剪辑成片”步骤卡呈现“已输出 N 个成片”，并作为该步骤完成度的判定依据。
-- **AI 编辑助手**：可以用自然语言描述剪辑意图，系统将其解析为受支持的命令序列；不超过 3 条命令时直接执行，多于 3 条先给出差异预览，确认后才批量执行。
+### 未挂到路由的剪辑插件
 
-### 运行环境要求
+`web/src/lib/plugins/builtin/editor/` 仍注册时间线、预览、检查器、素材、字幕、转写、导出和 AI 助手八个插槽，注册链在 `web/src/lib/plugins/editor-slot-registry.ts`。命令状态机、历史和摘要在 `web/src/lib/timeline/editor-commands.ts`、`editor-history.ts`、`ai-command-schema.ts`、`timeline-summary.ts`；状态在 `web/src/stores/editor/editor-store.ts`。`EditorStoreProvider` 定义于 `web/src/components/editor/editor-context.tsx`，当前没有任何路由页面挂载它，所以上面的插槽不是可打开的页面。
 
-- 语音转写依赖本地 whisper.cpp 服务（`CANVAS_WHISPER_BASE_URL`），未配置时转写任务明确失败。
-- 成片导出依赖服务端 ffmpeg（`CANVAS_FFMPEG_PATH`，留空时在 PATH 中查找）。
-- AI 编辑助手需要可用的文本模型渠道。
-
-### 相关实现
-
-- `web/src/pages/projects/detail/editor.tsx`、`web/src/pages/projects/detail.tsx`：编辑器页面与路由入口。
-- `web/src/pages/projects/detail/overview.tsx`：制作流程步骤卡与成片完成度展示。
-- `web/src/lib/timeline/`：时间线命令状态机、历史记录、命令 schema 与摘要（`editor-commands.ts`、`editor-history.ts`、`ai-command-schema.ts`、`timeline-summary.ts`）。
-- `web/src/stores/editor/editor-store.ts`：编辑器状态与快照持久化。
-- `web/src/lib/plugins/editor-slot-registry.ts`、`web/src/lib/plugins/builtin/editor/`：插槽注册链与内置预设插件。
-- `web/src/lib/plugins/plugin-permission-check.ts`：命令执行权限与失败关闭策略。
-- `web/src/services/api/timeline-tasks.ts`：转写与渲染任务客户端。
-- `backend/internal/service/task_timeline.go`、`task_render.go`、`timeline_render_plan.go`、`transcription_whisper.go`：后端转写、渲染与渲染计划任务。
-- `backend/internal/repository/project_workbench_read.go`：项目概览指标聚合（含成片完成度计数）。
+转写与渲染客户端在 `web/src/services/api/timeline-tasks.ts`。对应后端文件在 `backend/internal/app/task_timeline.go`、`task_render.go`、`timeline_render_plan.go`、`transcription_whisper.go`，不在 `backend/internal/service/`。`.env.example` 仍保留 `CANVAS_WHISPER_BASE_URL`（未配置时转写任务失败）和 `CANVAS_FFMPEG_PATH`（留空则在 PATH 中查找）。权限检查在 `web/src/lib/plugins/plugin-permission-check.ts`。`backend/internal/repository/project_workbench_read.go` 不存在。
 
 ## 画布生成工具（待本地验收）
 
