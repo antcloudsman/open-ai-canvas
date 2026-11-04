@@ -586,7 +586,9 @@ SEO 标题、描述、可选关键词会投影到浏览器 metadata、Open Graph
 
 `web/src/lib/plugins/builtin/editor/` 仍注册时间线、预览、检查器、素材、字幕、转写、导出和 AI 助手八个插槽，注册链在 `web/src/lib/plugins/editor-slot-registry.ts`。命令状态机、历史和摘要在 `web/src/lib/timeline/editor-commands.ts`、`editor-history.ts`、`ai-command-schema.ts`、`timeline-summary.ts`；状态在 `web/src/stores/editor/editor-store.ts`。`EditorStoreProvider` 定义于 `web/src/components/editor/editor-context.tsx`，当前没有任何路由页面挂载它，所以上面的插槽不是可打开的页面。
 
-转写与渲染客户端在 `web/src/services/api/timeline-tasks.ts`。对应后端文件在 `backend/internal/app/task_timeline.go`、`task_render.go`、`timeline_render_plan.go`、`transcription_whisper.go`，不在 `backend/internal/service/`。`.env.example` 仍保留 `CANVAS_WHISPER_BASE_URL`（未配置时转写任务失败）和 `CANVAS_FFMPEG_PATH`（留空则在 PATH 中查找）。权限检查在 `web/src/lib/plugins/plugin-permission-check.ts`。`backend/internal/repository/project_workbench_read.go` 不存在。
+转写与渲染客户端在 `web/src/services/api/timeline-tasks.ts`。对应后端文件在 `backend/internal/app/task_timeline.go`、`task_render.go`、`timeline_render_plan.go`、`transcription_whisper.go`，不在 `backend/internal/service/`。`.env.example` 仍保留 `CANVAS_WHISPER_BASE_URL`（未配置时转写任务失败）和 `CANVAS_FFMPEG_PATH`（留空则在 PATH 中查找）。权限检查在 `web/src/lib/plugins/plugin-permission-check.ts`。
+
+`backend/internal/repository/project_workbench_read.go` 存在。`ProjectOverviewMetrics` 按项目聚合单元、字数、画布、素材、镜头、待确认候选、就绪分镜/预演/视频和过期产物，并统计 `tasks` 里类型为时间线渲染且状态为成功的条数（`TimelineRenderSucceededCount`）。`backend/internal/app/project_workbench_read.go` 的 `ProjectOverview` 先用 `ProjectForUser` 确认项目属于当前用户，再把该计数映射为 `renderSucceededCount`。`GET /api/projects/:id/overview` 返回这份概览；前端客户端是 `web/src/services/api/projects.ts` 的 `getProjectOverview`。这不是已删除的 `web/src/pages/projects/detail/overview.tsx`，当前页面也没有引用这个客户端函数。
 
 ## 画布生成工具（待本地验收）
 
