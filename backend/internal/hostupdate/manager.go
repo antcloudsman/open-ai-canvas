@@ -44,12 +44,22 @@ type commandRunner interface {
 	Run(context.Context, string, []string, []string, io.Writer, io.Writer) error
 }
 
+// stdinCommandRunner 把备份流送给 docker compose。生产执行器和测试替身都实现它。
+type stdinCommandRunner interface {
+	RunWithInput(context.Context, string, []string, []string, io.Reader, io.Writer, io.Writer) error
+}
+
 type execRunner struct{ dir string }
 
 func (r execRunner) Run(ctx context.Context, name string, args, environment []string, stdout, stderr io.Writer) error {
+	return r.RunWithInput(ctx, name, args, environment, nil, stdout, stderr)
+}
+
+func (r execRunner) RunWithInput(ctx context.Context, name string, args, environment []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	command := exec.CommandContext(ctx, name, args...)
 	command.Dir = r.dir
 	command.Env = append(os.Environ(), environment...)
+	command.Stdin = stdin
 	command.Stdout = stdout
 	command.Stderr = stderr
 	return command.Run()
@@ -375,41 +385,19 @@ func (m *Manager) failWithRollback(cause error, targetVersion string, backup Bac
 	m.state.Operation.Error = safeOperationError(cause)
 	m.state.Operation.AutomaticRollback = true
 	m.state.Operation.Phase = PhaseRollingBack
-	m.appendLogLocked(PhaseRollingBack, "更新失败，正在自动恢复旧版本和数据库备份")
+	m.appendLogLocked(PhaseRollingBack, "更新失败，正在自动恢复旧版本、数据库和数据目录")
 	_ = m.saveStateLocked()
 	m.mu.Unlock()
 	m.runRollback(targetVersion, backup, true)
 }
 
 func (m *Manager) runRollback(targetVersion string, backup Backup, automatic bool) {
-	var failures []error
-	if err := m.compose(m.composePath(), targetVersion, 5*time.Minute, nil, "stop", "web", "backend"); err != nil {
-		failures = append(failures, err)
-	}
-	if _, err := os.Stat(m.previousComposePath()); err == nil {
-		if err := replaceFile(m.previousComposePath(), m.composePath(), 0o600); err != nil {
-			failures = append(failures, fmt.Errorf("恢复旧 Compose 配置：%w", err))
-		}
-	}
-	if _, err := os.Stat(m.previousEnvPath()); err == nil {
-		if err := replaceFile(m.previousEnvPath(), m.envPath(), 0o600); err != nil {
-			failures = append(failures, fmt.Errorf("恢复旧部署环境：%w", err))
-		}
-	}
-	if err := m.restoreDatabase(backup); err != nil {
-		failures = append(failures, err)
-	}
-	started := true
-	if err := m.compose(m.composePath(), targetVersion, m.config.StepTimeout, nil, "up", "-d", "--remove-orphans", "--wait", "--wait-timeout", "600"); err != nil {
-		started = false
-		failures = append(failures, err)
-	}
+	started, rollbackErr := m.restorePreviousDeployment(targetVersion, backup)
 	if started {
 		if err := m.verifyHealthy(targetVersion); err != nil {
-			failures = append(failures, err)
+			rollbackErr = errors.Join(rollbackErr, err)
 		}
 	}
-	rollbackErr := errors.Join(failures...)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := time.Now().UTC()
@@ -425,6 +413,57 @@ func (m *Manager) runRollback(targetVersion string, backup Backup, automatic boo
 		m.appendLogLocked(PhaseRolledBack, fmt.Sprintf("已恢复到 %s", targetVersion))
 	}
 	_ = m.saveStateLocked()
+}
+
+// restorePreviousDeployment 先停掉会写数据的服务，再恢复数据卷和 PostgreSQL，最后启动旧版本。
+// yingce-agent 与 web、backend 一起在恢复前停止，两侧恢复都成功后才随 up 拉起。
+// 恢复失败时这些服务保持停止，避免半恢复状态被继续写入。
+func (m *Manager) restorePreviousDeployment(targetVersion string, backup Backup) (bool, error) {
+	var failures []error
+	m.setPhase(PhaseRollingBack, "停止 Web、Backend 与 Agent，避免恢复期间写入")
+	if err := m.compose(m.composePath(), targetVersion, 5*time.Minute, nil, "stop", "web", "backend", "yingce-agent"); err != nil {
+		failures = append(failures, err)
+		if startErr := m.compose(m.composePath(), targetVersion, m.config.StepTimeout, nil, "start", "backend", "yingce-agent", "web"); startErr != nil {
+			failures = append(failures, fmt.Errorf("拉起停止失败前的服务：%w", startErr))
+			m.setPhase(PhaseRollingBack, "服务未完全停止，已跳过数据恢复，且未能拉起服务")
+		} else {
+			m.setPhase(PhaseRollingBack, "服务未完全停止，已跳过数据恢复并尝试拉起原服务")
+		}
+		return false, errors.Join(failures...)
+	}
+	if _, err := os.Stat(m.previousComposePath()); err == nil {
+		if err := replaceFile(m.previousComposePath(), m.composePath(), 0o600); err != nil {
+			failures = append(failures, fmt.Errorf("恢复旧 Compose 配置：%w", err))
+		}
+	}
+	if _, err := os.Stat(m.previousEnvPath()); err == nil {
+		if err := replaceFile(m.previousEnvPath(), m.envPath(), 0o600); err != nil {
+			failures = append(failures, fmt.Errorf("恢复旧部署环境：%w", err))
+		}
+	}
+	if len(failures) > 0 {
+		m.setPhase(PhaseRollingBack, "部署配置未恢复，已跳过数据库与数据目录恢复，服务保持停止")
+		return false, errors.Join(failures...)
+	}
+
+	// 先恢复文件。归档无效时还没有删除数据库。
+	m.setPhase(PhaseRollingBack, "恢复后端数据目录，使文件与备份一致")
+	if err := m.restoreDataDirectory(backup); err != nil {
+		failures = append(failures, err)
+		m.setPhase(PhaseRollingBack, "数据目录恢复失败，Web、Backend 与 Agent 保持停止")
+		return false, errors.Join(failures...)
+	}
+	m.setPhase(PhaseRollingBack, "恢复 PostgreSQL")
+	if err := m.restoreDatabase(backup); err != nil {
+		failures = append(failures, err)
+		m.setPhase(PhaseRollingBack, "数据库恢复失败，Web、Backend 与 Agent 保持停止")
+		return false, errors.Join(failures...)
+	}
+	m.setPhase(PhaseRollingBack, "数据目录与数据库已恢复，正在启动旧版本服务")
+	if err := m.compose(m.composePath(), targetVersion, m.config.StepTimeout, nil, "up", "-d", "--remove-orphans", "--wait", "--wait-timeout", "600"); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (m *Manager) snapshotLocked() Status {

@@ -13,6 +13,16 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 - [ ] 分别设置上述变量后，安装脚本、Host Updater 和 Compose 使用覆盖值。
 - [ ] 已发布的 Host Updater 二进制需用本变更重新构建后，空 `CANVAS_UPDATER_REPOSITORY` 才会改为 `antcloudsman`。
 
+## Host Updater：回退恢复数据目录并在恢复前停止 Agent
+
+- 已实现：回退校验 ZIP 后，把 `backend-data.tar` 换回 backend 数据卷 `/data`（拒绝越界路径；替换未完成会留下 `.hostupdate-restore-new` 或 `.hostupdate-restore-old`）。回退开始时停止 web、backend、yingce-agent；数据目录和数据库都成功后才 `up -d` 拉起 Agent。停服失败不恢复数据，并尝试拉起原服务。
+- 本地单测：`go test ./internal/hostupdate/`。真实 Compose 手测见 [W0 T-P0-01/02 手测记录](w0-t-p0-01-02-handtest.mdx)。
+- 手测环境：2026-11-05 01:20–01:22 Asia/Shanghai。主机名 `cursor`，Linux 6.12.94+，不是 `182.92.9.162`。安装目录 `/opt/open-ai-canvas-handtest`，状态目录 `/var/lib/open-ai-canvas-handtest`。应用镜像为 GHCR `ghcr.io/ddcat-ai/open-ai-canvas-{backend,web,yingce-agent}:1.7.3.5`（digest 见手测记录）。Host Updater 二进制由本分支提交 `260c3b272cafd72cbabc4255ed4a2da2f78e85aa` 在该机 `CGO_ENABLED=0 go build ./cmd/host-updater` 编出，安装到 `/usr/local/bin/open-ai-canvas-host-updater`，SHA-256 `2a0ebc86227d43849d25d332ca279cde5ac51d37f5ee5d8eb50d10686fc10087`。
+- [x] 备份 ZIP 中 `backend-data.tar` 非空，且包含当时的对象或文件。手测 ZIP `backup-20261104-172045.zip`：`metadata.json` 125 字节、`database.dump` 8798700 字节、`backend-data.tar` 98397184 字节，tar 内有 `./handtest-keep.txt`。
+- [x] 回退后 `/data` 与该次备份的数据库一致，卷内没有 `.hostupdate-restore-new`、`.hostupdate-restore-old` 目录。`phase=rolled_back`。`handtest-keep.txt` 仍为 `kept-at-backup`，事后写入的 `handtest-dirty.txt` 和数据库第 2 行已消失，`handtest_marker` 只剩 id=1。
+- [x] 数据目录或数据库恢复失败时，`state.json` 的 phase 为 `manual_intervention`，`yingce-agent` 保持停止。第二次回滚在解包时 `docker kill` 一次性容器（exit 137），卷内留下 `.hostupdate-restore-new`，`docker compose ps` 只剩 postgres 与 redis。日志没有进入「恢复 PostgreSQL」。
+- [x] 回退日志里，停止 Agent 在恢复之前，启动在两侧恢复成功之后。成功回滚日志顺序：停止 Web、Backend 与 Agent → 恢复后端数据目录 → 恢复 PostgreSQL → 正在启动旧版本服务。标记目录出现时 `yingce-agent` 已不在运行列表中。
+
 ## 界面多语言第一期（#948）
 
 - 已实现：引入 `i18next` / `react-i18next`，`web/src/i18n/` 管理六种语言（zh-CN 为源语言，其他语言键结构由类型检查和单测保证一致，缺失时回退中文）。语言保存在本设备，首次按浏览器语言选择；antd、dayjs、`<html lang>`、相对时间随语言切换。登录页、账户菜单和设置页「偏好设置」提供语言选择。

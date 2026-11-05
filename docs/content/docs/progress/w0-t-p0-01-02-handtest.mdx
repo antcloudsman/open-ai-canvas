@@ -1,0 +1,186 @@
+---
+title: W0 T-P0-01/02 Host Updater 回退手测
+description: 隔离 Compose 栈上对数据目录恢复和 yingce-agent 停服的手测记录。
+---
+
+# W0 T-P0-01/02 Host Updater 回退手测
+
+结论：**PASS**。这是隔离栈上的真实 Compose 手测，不是单测替身。未访问 `182.92.9.162`。`.env`、数据库密码和更新器 Token 只留在该机，不写入本文。
+
+## 环境
+
+| 项 | 值 |
+| --- | --- |
+| 时间 | 2026-11-05 01:20:17–01:22:35 Asia/Shanghai |
+| 机器 | 主机名 `cursor`，`Linux cursor 6.12.94+ #1 SMP PREEMPT_DYNAMIC` x86_64。地址只有 `127.0.0.1/8` 与 `172.30.0.2/24`，外加 Docker 网桥 |
+| 安装目录 | `/opt/open-ai-canvas-handtest` |
+| Compose | 本分支的 `docker-compose.deploy.yml`，项目名 `open-ai-canvas-handtest` |
+| 状态目录 | `/var/lib/open-ai-canvas-handtest` |
+| HTTP | `127.0.0.1:13080` |
+| Docker | 29.1.3。容器互通前把 `net.bridge.bridge-nf-call-iptables` 设为 0，否则 migrate 连不上 postgres |
+| 应用镜像 | 公开 GHCR tag `1.7.3.5`，不是本分支现场构建 |
+| backend | `ghcr.io/ddcat-ai/open-ai-canvas-backend@sha256:86e879e2c813cb6a26d9e91421636e4a4141d1db1502572592ccd39d91b21be2` |
+| web | `ghcr.io/ddcat-ai/open-ai-canvas-web@sha256:bb398db05c8fadcfa8b85d1a70c98a395f0570bb5ce92243e59fb74cda895d36` |
+| yingce-agent | `ghcr.io/ddcat-ai/open-ai-canvas-yingce-agent@sha256:2615dee5eb4a20cfb192e61a9375a1172efe30bca70ae857287fe5d731834a4c` |
+| postgres | `postgres:17-alpine`，`sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b` |
+| redis | `redis:7.4-alpine`，`sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f` |
+| Host Updater | 本分支 `260c3b272cafd72cbabc4255ed4a2da2f78e85aa` 上 `CGO_ENABLED=0 go build -o /tmp/oac-handtest-evidence/open-ai-canvas-host-updater ./cmd/host-updater`，再 `install` 到 `/usr/local/bin/open-ai-canvas-host-updater` |
+| 二进制 SHA-256 | `2a0ebc86227d43849d25d332ca279cde5ac51d37f5ee5d8eb50d10686fc10087` |
+
+二进制里能搜到本次回退文案：`恢复后端数据目录，使文件与备份一致`、`停止 Web、Backend 与 Agent，避免恢复期间写入`。
+
+健康检查在开测时返回 `ready=true`，`build.version=v1.7.3.5`。更新器使用 `CANVAS_UPDATER_STABLE_WINDOW=8s`、`CANVAS_UPDATER_SELF_UPDATE=false`，socket 为 `/tmp/oac-handtest-updater.sock`。
+
+备份 ZIP 没有单独的 HTTP 入口，生产上由更新流程调用 `createBackup`。手测用同一提交、带 `handtest` 构建标签的 `go test` 调用这个函数生成 ZIP，再把结果写入更新器 `state.json`，回滚本身由已安装二进制的 `POST /v1/rollback` 执行。
+
+## 1. 备份 ZIP 含三份非空文件
+
+停掉 web、backend、yingce-agent 后生成备份。postgres 与 redis 保持运行。
+
+```text
+ok  	yingce/backend/internal/hostupdate	3.515s
+backup_id backup-20261104-172045
+backup_path /opt/open-ai-canvas-handtest/backups/backup-20261104-172045.zip
+backup_checksum sha256:c9a670de7871026c4ec6a81037821076b205df6c5a09677292dea2d4fc3bbccd
+backup_size 107196380
+backup_version v1.7.3.5
+```
+
+`unzip -l`：
+
+```text
+  Length      Date    Time    Name
+---------  ---------- -----   ----
+      125  1980-00-00 00:00   metadata.json
+  8798700  1980-00-00 00:00   database.dump
+ 98397184  1980-00-00 00:00   backend-data.tar
+---------                     -------
+107196009                     3 files
+```
+
+`metadata.json`：
+
+```json
+{
+  "createdAt": "2026-11-04T17:20:45.764519761Z",
+  "format": 1,
+  "id": "backup-20261104-172045",
+  "version": "v1.7.3.5"
+}
+```
+
+`backend-data.tar` 含备份前写入的对象文件：
+
+```text
+-rw-r--r-- root/root        14 2026-11-04 17:20 ./handtest-keep.txt
+```
+
+`database.dump` 为 8798700 字节。备份前插入的行是 `handtest_marker(1, 'kept-at-backup')`。
+
+## 2. 成功回滚
+
+备份之后、回滚之前，在运行中的栈上做了破坏：
+
+- `/data/handtest-dirty.txt` 内容 `dirty-after-backup`
+- `UPDATE handtest_marker SET note='mutated-after-backup' WHERE id=1`
+- `INSERT` id=2，`dirty-after-backup`
+
+然后由已安装的更新器执行：
+
+```bash
+curl --unix-socket /tmp/oac-handtest-updater.sock \
+  -H "Authorization: Bearer <redacted>" \
+  -H 'Content-Type: application/json' \
+  -d '{"reason":"handtest success rollback"}' \
+  http://localhost/v1/rollback
+```
+
+接受时 `phase=rolling_back`。轮询到 `FINAL rolled_back`。日志：
+
+```text
+phase rolled_back
+rollbackError
+2026-11-04T17:21:08.934521016Z rolling_back 管理员发起人工回退：handtest success rollback
+2026-11-04T17:21:08.935928098Z rolling_back 停止 Web、Backend 与 Agent，避免恢复期间写入
+2026-11-04T17:21:19.492493906Z rolling_back 恢复后端数据目录，使文件与备份一致
+2026-11-04T17:21:20.121982097Z rolling_back 恢复 PostgreSQL
+2026-11-04T17:21:22.393021452Z rolling_back 数据目录与数据库已恢复，正在启动旧版本服务
+2026-11-04T17:21:47.2916288Z rolled_back 已恢复到 v1.7.3.5
+```
+
+顺序是：停 web/backend/yingce-agent → 恢复数据目录 → 恢复 PostgreSQL → 再启动。停服日志到下一条之间隔了约 10 秒，说明 `docker compose stop` 返回之后才开始解包。
+
+回滚后 `docker compose ps` 中 web、backend、yingce-agent 都是 healthy。`/data`：
+
+```text
+-rw-r--r--    1 root     root            14 Nov  4 17:20 handtest-keep.txt
+KEEP
+kept-at-backup
+DIRTY_ABSENT
+MARKER_ABSENT
+```
+
+数据库：
+
+```text
+ id |      note
+----+----------------
+  1 | kept-at-backup
+```
+
+id=2 和被改过的 note 都回到了这份 ZIP。没有 `.hostupdate-restore-new` 或 `.hostupdate-restore-old`。
+
+## 3. 半恢复
+
+成功回滚后向 `/data/bulk.bin` 写入 200MiB，再打第二份备份 `backup-20261104-172159`（316916391 字节，`sha256:514cadb72ef0801f8652969175ee958befcf1e72b1f0ae1e06b07bedbe3dab95`），把栈重新拉起，然后再次 `POST /v1/rollback`。
+
+解包一开始，数据卷 `/var/lib/docker/volumes/open-ai-canvas-handtest_backend-data/_data` 出现 `.hostupdate-restore-new`。当时立刻 `docker kill` 一次性恢复容器 `open-ai-canvas-handtest-backend-run-e4e294cea1db`。
+
+标记出现时的 `docker compose ps` 只有 postgres 和 redis，没有 web、backend、yingce-agent：
+
+```text
+MARKER_SEEN 01:22:33.948
+KILL d8470a6c92f5 open-ai-canvas-handtest-backend-run-e4e294cea1db
+NAME                                 SERVICE    STATUS
+open-ai-canvas-handtest-postgres-1   postgres   Up 9 minutes (healthy)
+open-ai-canvas-handtest-redis-1      redis      Up 9 minutes (healthy)
+```
+
+更新器结果：
+
+```text
+phase manual_intervention
+rollbackError 恢复数据目录：docker compose run --rm --no-deps --pull never -i -T --user root --entrypoint sh backend -c <restore-data-script>：exit status 137；数据卷中若仍有 .hostupdate-restore-new 或 .hostupdate-restore-old，说明替换未完成，服务保持停止
+2026-11-04T17:22:22.913244132Z rolling_back 停止 Web、Backend 与 Agent，避免恢复期间写入
+2026-11-04T17:22:33.455294913Z rolling_back 恢复后端数据目录，使文件与备份一致
+2026-11-04T17:22:34.241092873Z rolling_back 数据目录恢复失败，Web、Backend 与 Agent 保持停止
+2026-11-04T17:22:34.242054474Z manual_intervention 自动回退未能完成，需要人工介入
+```
+
+没有「恢复 PostgreSQL」这一条，所以数据库没有被删掉重建。事后查询仍是：
+
+```text
+ id |      note
+----+----------------
+  1 | kept-at-backup
+```
+
+失败后的 `docker compose ps` 仍然只有 postgres 和 redis。一次性容器列出 `/data`：
+
+```text
+drwxr-xr-x    2 app      app           4096 Nov  4 17:22 .hostupdate-restore-new
+-rw-r--r--    1 root     root     209715200 Nov  4 17:21 bulk.bin
+-rw-r--r--    1 root     root            14 Nov  4 17:20 handtest-keep.txt
+```
+
+`bulk.bin` 还在，说明替换没有完成；标记目录留在卷里。exit status 137 是 `docker kill` 的结果。
+
+## 4. 恢复前 yingce-agent 已停止
+
+两轮回滚的日志都先写「停止 Web、Backend 与 Agent」，下一条才是「恢复后端数据目录」。半恢复在标记目录已经出现时，`yingce-agent` 不在 `docker compose ps` 里，直到用例结束也没有被拉起。它没有挂载 `/data`，backend 同样处于停止，因此这段时间没有 Agent 写入口。
+
+`docker events --format '{{.Status}}'` 在 Docker 29.1.3 上模板报错（`can't evaluate field Status`），事件流没有记下来。停服顺序以上面的更新器日志时间戳和标记出现时的 `ps` 为准。
+
+## 未覆盖
+
+没有走完整的「检查 GitHub Release → 拉新镜像 → 迁移失败自动回滚」。当前公开最新 Release 就是正在运行的 `v1.7.3.5`，不能再升一版来触发更新器内部的 `createBackup`。备份函数与回滚 HTTP 都来自同一提交的源码和已安装二进制。

@@ -1,6 +1,7 @@
 package hostupdate
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"bytes"
 	"context"
@@ -13,7 +14,7 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -297,6 +298,50 @@ func (m *Manager) composeWithImages(composePath, imageTag string, images deploym
 	return nil
 }
 
+func (m *Manager) composeWithInput(composePath, imageTag string, timeout time.Duration, stdin io.Reader, arguments ...string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	args := []string{"compose", "--project-name", composeProjectName(m.config.InstallDir), "--env-file", m.envPath(), "-f", composePath}
+	args = append(args, arguments...)
+	var stderr bytes.Buffer
+	environment := []string{"CANVAS_IMAGE_TAG=" + strings.TrimPrefix(imageTag, "v")}
+	err := runWithInput(ctx, m.runner, "docker", args, environment, stdin, io.Discard, &stderr)
+	if err != nil {
+		message := strings.TrimSpace(stderr.String())
+		if len(message) > 1000 {
+			message = message[len(message)-1000:]
+		}
+		display := rollbackCommandDisplay(arguments)
+		if message != "" {
+			return fmt.Errorf("docker compose %s：%s", display, message)
+		}
+		return fmt.Errorf("docker compose %s：%w", display, err)
+	}
+	return nil
+}
+
+func rollbackCommandDisplay(arguments []string) string {
+	display := make([]string, len(arguments))
+	for index, argument := range arguments {
+		if strings.Contains(argument, restoreStagingDirName) {
+			display[index] = "<restore-data-script>"
+			continue
+		}
+		display[index] = argument
+	}
+	return strings.Join(display, " ")
+}
+
+func runWithInput(ctx context.Context, runner commandRunner, name string, args, environment []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	if withInput, ok := runner.(stdinCommandRunner); ok {
+		return withInput.RunWithInput(ctx, name, args, environment, stdin, stdout, stderr)
+	}
+	if stdin == nil {
+		return runner.Run(ctx, name, args, environment, stdout, stderr)
+	}
+	return errors.New("当前命令执行器不支持标准输入")
+}
+
 func composeProjectName(installDir string) string {
 	name := filepath.Base(filepath.Clean(installDir))
 	if name == "." || name == string(filepath.Separator) || name == "" {
@@ -558,30 +603,217 @@ func (m *Manager) restoreDatabase(backup Backup) error {
 	defer cancel()
 	args := []string{"compose", "--env-file", m.envPath(), "-f", m.composePath(), "exec", "-T", "postgres", "pg_restore", "-U", postgresUser, "-d", postgresDB, "--no-owner", "--no-privileges"}
 	var stderr bytes.Buffer
-	command := execCommandWithInput{runner: m.runner, input: reader}
-	if err := command.Run(ctx, "docker", args, []string{"CANVAS_IMAGE_TAG=" + strings.TrimPrefix(backup.Version, "v")}, io.Discard, &stderr); err != nil {
-		return fmt.Errorf("恢复 PostgreSQL：%s", strings.TrimSpace(stderr.String()))
+	if err := runWithInput(ctx, m.runner, "docker", args, []string{"CANVAS_IMAGE_TAG=" + strings.TrimPrefix(backup.Version, "v")}, reader, io.Discard, &stderr); err != nil {
+		message := strings.TrimSpace(stderr.String())
+		if message == "" {
+			message = err.Error()
+		}
+		return fmt.Errorf("恢复 PostgreSQL：%s", message)
 	}
 	return nil
 }
 
-type execCommandWithInput struct {
-	runner commandRunner
-	input  io.Reader
+const (
+	restoreStagingDirName  = ".hostupdate-restore-new"
+	restorePreviousDirName = ".hostupdate-restore-old"
+)
+
+// restoreBackendDataScript 用标准输入里的 tar 替换 /data。
+// 替换未完成时会留下 .hostupdate-restore-new 或 .hostupdate-restore-old，用来识别半恢复。
+// 这两个名字以及 .hostupdate-restore-* 只给回退使用；开始时会清掉上次留下的标记。
+func restoreBackendDataScript() string {
+	return `set -eu
+data="/data"
+case "$data" in
+  "/data") ;;
+  *) echo "拒绝异常的数据目录" >&2; exit 1 ;;
+esac
+for entry in "$data"/.hostupdate-restore-*; do
+  [ -e "$entry" ] || [ -L "$entry" ] || continue
+  rm -rf "$entry"
+done
+staging="$data/.hostupdate-restore-new"
+mkdir -p "$staging"
+tar -C "$staging" -xf -
+previous="$data/.hostupdate-restore-old"
+mkdir -p "$previous"
+for entry in "$data"/* "$data"/.[!.]* "$data"/..?*; do
+  [ -e "$entry" ] || [ -L "$entry" ] || continue
+  name=${entry##*/}
+  case "$name" in
+    .hostupdate-restore-*) continue ;;
+  esac
+  mv -- "$entry" "$previous"/
+done
+incoming="$previous/.hostupdate-restore-incoming"
+mv -- "$staging" "$incoming"
+for entry in "$incoming"/* "$incoming"/.[!.]* "$incoming"/..?*; do
+  [ -e "$entry" ] || [ -L "$entry" ] || continue
+  mv -- "$entry" "$data"/
+done
+sync
+rm -rf "$previous"
+`
 }
 
-func (c execCommandWithInput) Run(ctx context.Context, name string, args, environment []string, stdout, stderr io.Writer) error {
-	runner, ok := c.runner.(execRunner)
-	if !ok {
-		return errors.New("当前命令执行器不支持标准输入")
+func (m *Manager) restoreDataDirectory(backup Backup) error {
+	if err := verifyZipBackup(backup.Path, backup.Checksum); err != nil {
+		return fmt.Errorf("拒绝恢复未通过校验的备份：%w", err)
 	}
-	command := exec.CommandContext(ctx, name, args...)
-	command.Dir = runner.dir
-	command.Env = append(os.Environ(), environment...)
-	command.Stdin = c.input
-	command.Stdout = stdout
-	command.Stderr = stderr
-	return command.Run()
+	entry, err := openZipEntry(backup.Path, "backend-data.tar")
+	if err != nil {
+		return err
+	}
+	validateErr := validateBackendDataTar(entry)
+	closeErr := entry.Close()
+	if validateErr != nil {
+		return fmt.Errorf("校验数据目录备份：%w", validateErr)
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	entry, err = openZipEntry(backup.Path, "backend-data.tar")
+	if err != nil {
+		return err
+	}
+	defer entry.Close()
+	// 与备份相同：停服后的一次性 root 容器，只跑 tar，不启动业务入口。项目名必须和备份时一致，否则会写到另一个数据卷。
+	if err := m.composeWithInput(m.composePath(), backup.Version, m.config.StepTimeout, entry, "run", "--rm", "--no-deps", "--pull", "never", "-i", "-T", "--user", "root", "--entrypoint", "sh", "backend", "-c", restoreBackendDataScript()); err != nil {
+		return fmt.Errorf("恢复数据目录：%w；数据卷中若仍有 %s 或 %s，说明替换未完成，服务保持停止", err, restoreStagingDirName, restorePreviousDirName)
+	}
+	return nil
+}
+
+func openZipEntry(zipPath, name string) (io.ReadCloser, error) {
+	archive, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range archive.File {
+		if entry.Name != name {
+			continue
+		}
+		reader, err := entry.Open()
+		if err != nil {
+			archive.Close()
+			return nil, err
+		}
+		return &zipEntryReader{Reader: reader, closers: []io.Closer{reader, archive}}, nil
+	}
+	archive.Close()
+	return nil, fmt.Errorf("备份中不存在 %s", name)
+}
+
+type zipEntryReader struct {
+	io.Reader
+	closers []io.Closer
+}
+
+func (r *zipEntryReader) Close() error {
+	var err error
+	for _, closer := range r.closers {
+		err = errors.Join(err, closer.Close())
+	}
+	return err
+}
+
+func validateBackendDataTar(reader io.Reader) error {
+	archive := tar.NewReader(reader)
+	count := 0
+	for {
+		header, err := archive.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("读取数据目录备份：%w", err)
+		}
+		if err := validateBackendDataTarHeader(header); err != nil {
+			return err
+		}
+		if _, err := io.Copy(io.Discard, archive); err != nil {
+			return fmt.Errorf("读取数据目录备份：%w", err)
+		}
+		switch header.Typeflag {
+		case tar.TypeXHeader, tar.TypeXGlobalHeader:
+		default:
+			count++
+		}
+	}
+	if count == 0 {
+		return errors.New("数据目录备份为空")
+	}
+	return nil
+}
+
+func validateBackendDataTarHeader(header *tar.Header) error {
+	switch header.Typeflag {
+	case tar.TypeXHeader, tar.TypeXGlobalHeader:
+		return nil
+	case tar.TypeReg, tar.TypeRegA, tar.TypeDir, tar.TypeSymlink, tar.TypeLink:
+	default:
+		return fmt.Errorf("数据目录备份包含不支持的文件类型 %q", header.Name)
+	}
+	relative, err := archiveRelative(header.Name)
+	if err != nil {
+		return fmt.Errorf("数据目录备份包含越界路径 %q", header.Name)
+	}
+	if relative == "" && header.Typeflag != tar.TypeDir && !strings.HasSuffix(header.Name, "/") {
+		return fmt.Errorf("数据目录备份包含空路径 %q", header.Name)
+	}
+	switch header.Typeflag {
+	case tar.TypeSymlink:
+		if err := symlinkWithinArchive(header.Name, header.Linkname); err != nil {
+			return fmt.Errorf("数据目录备份包含越界链接 %q -> %q", header.Name, header.Linkname)
+		}
+	case tar.TypeLink:
+		if header.Linkname == "" {
+			return fmt.Errorf("数据目录备份包含空硬链接 %q", header.Name)
+		}
+		if _, err := archiveRelative(header.Linkname); err != nil {
+			return fmt.Errorf("数据目录备份包含越界硬链接 %q -> %q", header.Name, header.Linkname)
+		}
+	}
+	return nil
+}
+
+func symlinkWithinArchive(name, target string) error {
+	if target == "" || strings.HasPrefix(target, "/") || strings.HasPrefix(target, `\`) {
+		return errors.New("无效链接")
+	}
+	directory, err := archiveRelative(path.Dir(name))
+	if err != nil {
+		return err
+	}
+	combined := target
+	if directory != "" {
+		combined = directory + "/" + target
+	}
+	if _, err := archiveRelative(combined); err != nil {
+		return err
+	}
+	return nil
+}
+
+func archiveRelative(name string) (string, error) {
+	if strings.HasPrefix(name, "/") || strings.HasPrefix(name, `\`) {
+		return "", errors.New("绝对路径")
+	}
+	var parts []string
+	for _, part := range strings.Split(name, "/") {
+		switch part {
+		case "", ".":
+			continue
+		case "..":
+			if len(parts) == 0 {
+				return "", errors.New("越界路径")
+			}
+			parts = parts[:len(parts)-1]
+		default:
+			parts = append(parts, part)
+		}
+	}
+	return strings.Join(parts, "/"), nil
 }
 
 func (m *Manager) verifyHealthy(targetVersion string) error {
